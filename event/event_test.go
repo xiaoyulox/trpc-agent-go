@@ -457,6 +457,13 @@ func TestTryEmitReadyEvent(t *testing.T) {
 		require.False(t, handled)
 		require.NoError(t, err)
 	})
+	t.Run("closed_channel_panic_recovery", func(t *testing.T) {
+		ch := make(chan *Event)
+		close(ch)
+		handled, err := tryEmitReadyEvent(context.Background(), ch, evt)
+		require.True(t, handled)
+		require.ErrorIs(t, err, ErrClosedChannelSend)
+	})
 }
 
 func TestEmitEventTimeoutError_Error_And_As(t *testing.T) {
@@ -583,6 +590,35 @@ func TestEmitEventWithTimeout_WithTimeout_ContextCancelledDuringSend(
 
 	err := <-errCh
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestEmitEventWithTimeout_ClosedChannelPanicRecovery_FastPath(t *testing.T) {
+	ch := make(chan *Event)
+	close(ch)
+	e := New("inv", "author")
+
+	err := EmitEventWithTimeout(context.Background(), ch, e, EmitWithoutTimeout)
+	require.ErrorIs(t, err, ErrClosedChannelSend)
+}
+
+func TestEmitEventWithTimeout_ClosedChannelPanicRecovery_SlowPath(t *testing.T) {
+	ch := make(chan *Event, 1)
+	ch <- New("fill", "author")
+	close(ch)
+
+	e := New("inv", "author")
+
+	err := EmitEventWithTimeout(context.Background(), ch, e, EmitWithoutTimeout)
+	require.ErrorIs(t, err, ErrClosedChannelSend)
+}
+
+func TestEmitEventWithTimeout_ClosedChannelPanicRecovery_WithTimeout(t *testing.T) {
+	ch := make(chan *Event)
+	close(ch)
+	e := New("inv", "author")
+
+	err := EmitEventWithTimeout(context.Background(), ch, e, time.Millisecond)
+	require.ErrorIs(t, err, ErrClosedChannelSend)
 }
 
 func TestWithTag_SetAndAppend(t *testing.T) {
